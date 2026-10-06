@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Members Board</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <main class="page">
+    <header class="header">
+      <div>
+        <p class="eyebrow">MEMBERS COMMUNITY</p>
+        <h1>Members Board</h1>
+        <p class="subtitle">Sign in to share and read posts.</p>
+      </div>
+    </header>
+
+    <p id="status" class="status" aria-live="polite"></p>
+
+<section id="verification-panel" class="verification-panel hidden" aria-live="polite">
+  <div class="verification-icon">✉️</div>
+  <div class="verification-copy">
+    <p class="eyebrow">ONE MORE STEP</p>
+    <h2>Check your email to verify your account</h2>
+    <p id="verification-message">
+      We’ll send a verification link to your email address.
+    </p>
+    <button id="resend-verification-button" class="text-button" type="button">
+      Resend verification email
+    </button>
+  </div>
+</section>
+
+    <section id="auth-panel" class="panel">
+      <div class="auth-grid">
+        <form id="register-form">
+          <h2>Create an account</h2>
+
+          <label for="register-username">Username</label>
+          <input
+            id="register-username"
+            type="text"
+            minlength="3"
+            maxlength="20"
+            pattern="[A-Za-z0-9_]+"
+            autocomplete="username"
+            placeholder="letters, numbers, underscores"
+            required
+          >
+
+          <label for="register-email">Email</label>
+          <input
+            id="register-email"
+            type="email"
+            autocomplete="email"
+            placeholder="you@example.com"
+            required
+          >
+
+          <label for="register-password">Password</label>
+          <input
+            id="register-password"
+            type="password"
+            minlength="8"
+            autocomplete="new-password"
+            placeholder="At least 8 characters"
+            required
+          >
+
+          <button class="button primary" type="submit">Register</button>
+          <p class="small-note">
+            Your username appears on your posts. Your email is used for sign-in.
+          </p>
+        </form>
+
+        <form id="login-form">
+          <h2>Log in</h2>
+
+          <label for="login-email">Email</label>
+          <input
+            id="login-email"
+            type="email"
+            autocomplete="email"
+            placeholder="you@example.com"
+            required
+          >
+
+          <label for="login-password">Password</label>
+          <input
+            id="login-password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Your password"
+            required
+          >
+
+          <button class="button secondary" type="submit">Log in</button>
+          <button id="forgot-password-button" class="text-button" type="button">
+            Forgot password?
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <section id="member-panel" class="hidden">
+      <div class="member-heading">
+        <div>
+          <p class="eyebrow">MEMBERS AREA</p>
+          <h2>Welcome, <span id="current-username">member</span></h2>
+        </div>
+        <button id="logout-button" class="button secondary" type="button">
+          Log out
+        </button>
+      </div>
+
+      <form id="post-form" class="panel post-form">
+        <label for="post-content">Write a post</label>
+        <textarea
+          id="post-content"
+          maxlength="2000"
+          rows="4"
+          placeholder="Share something with the members…"
+          required
+        ></textarea>
+
+        <div class="post-form-footer">
+          <span class="small-note">Up to 2,000 characters</span>
+          <button class="button primary" type="submit">Publish post</button>
+        </div>
+      </form>
+
+      <section class="feed-section">
+        <div class="feed-heading">
+          <div>
+            <p class="eyebrow">COMMUNITY</p>
+            <h2>Member posts</h2>
+          </div>
+          <button id="refresh-posts-button" class="button secondary" type="button">
+            Refresh
+          </button>
+        </div>
+
+        <div id="post-list" class="post-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <!-- Supabase JavaScript library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
+</html>

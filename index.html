@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#321446">
   <title>Members Club</title>
   <link rel="stylesheet" href="style.css">
@@ -10,10 +10,8 @@
 
 <body>
   <main class="page">
-    <!-- Shared status messages -->
     <p id="status" class="status" aria-live="polite"></p>
 
-    <!-- Sign-in and registration screen -->
     <section id="auth-panel" class="auth-screen">
       <div class="auth-hero">
         <div class="auth-brand">
@@ -22,61 +20,33 @@
         </div>
 
         <p class="auth-eyebrow">YOUR COMMUNITY</p>
-        <h2 id="auth-heading">Welcome back</h2>
-        <p class="auth-hero-text">
-          Connect with your members and share what matters.
-        </p>
+        <h1 id="auth-heading">Welcome back</h1>
+        <p class="auth-hero-text">Connect with your members and share what matters.</p>
 
         <div class="auth-switch">
-          <button
-            id="show-login-button"
-            class="auth-switch-button active"
-            type="button"
-          >
+          <button id="show-login-button" class="auth-switch-button active" type="button">
             Sign in
           </button>
-
-          <button
-            id="show-register-button"
-            class="auth-switch-button"
-            type="button"
-          >
+          <button id="show-register-button" class="auth-switch-button" type="button">
             Sign up
           </button>
         </div>
       </div>
 
       <div class="auth-form-panel">
-        <!-- Login form -->
         <form id="login-form" class="auth-form">
-          <div class="form-heading">
-            <p class="eyebrow">MEMBER ACCESS</p>
-            <h2>Sign in to your account</h2>
-          </div>
+          <p class="eyebrow">MEMBER ACCESS</p>
+          <h2>Sign in to your account</h2>
 
           <label for="login-email">Email</label>
-          <input
-            id="login-email"
-            type="email"
-            autocomplete="email"
-            placeholder="you@example.com"
-            required
-          >
+          <input id="login-email" type="email" autocomplete="email"
+            placeholder="you@example.com" required>
 
           <label for="login-password">Password</label>
-          <input
-            id="login-password"
-            type="password"
-            autocomplete="current-password"
-            placeholder="Your password"
-            required
-          >
+          <input id="login-password" type="password" autocomplete="current-password"
+            placeholder="Your password" required>
 
-          <button
-            id="forgot-password-button"
-            class="forgot-button"
-            type="button"
-          >
+          <button id="forgot-password-button" class="forgot-button" type="button">
             Forgot password?
           </button>
 
@@ -84,146 +54,155 @@
 
           <p class="switch-prompt">
             Don’t have an account?
-            <button
-              id="login-to-register-link"
-              class="inline-link"
-              type="button"
-            >
+            <button id="login-to-register-link" class="inline-link" type="button">
               Sign up
             </button>
           </p>
         </form>
 
-        <!-- Registration form -->
         <form id="register-form" class="auth-form hidden">
-          <div class="form-heading">
-            <p class="eyebrow">JOIN THE COMMUNITY</p>
-            <h2>Create your account</h2>
-            <p class="form-description">
-              Your username will appear beside your posts.
-            </p>
-          </div>
+          <p class="eyebrow">JOIN THE COMMUNITY</p>
+          <h2>Create your account</h2>
+          <p class="form-description">Your username appears beside your posts.</p>
 
           <label for="register-username">Username</label>
-          <input
-            id="register-username"
-            type="text"
-            minlength="3"
-            maxlength="20"
-            pattern="[A-Za-z0-9_]+"
-            autocomplete="username"
-            placeholder="letters, numbers, underscores"
-            required
-          >
+          <input id="register-username" type="text" minlength="3" maxlength="20"
+            pattern="[A-Za-z0-9_]+" autocomplete="username"
+            placeholder="letters, numbers, underscores" required>
 
           <label for="register-email">Email</label>
-          <input
-            id="register-email"
-            type="email"
-            autocomplete="email"
-            placeholder="you@example.com"
-            required
-          >
+          <input id="register-email" type="email" autocomplete="email"
+            placeholder="you@example.com" required>
 
           <label for="register-password">Password</label>
-          <input
-            id="register-password"
-            type="password"
-            minlength="8"
-            autocomplete="new-password"
-            placeholder="At least 8 characters"
-            required
-          >
+          <input id="register-password" type="password" minlength="8"
+            autocomplete="new-password" placeholder="At least 8 characters" required>
 
           <button class="auth-submit" type="submit">Create account</button>
 
           <p class="switch-prompt">
             Already a member?
-            <button
-              id="register-to-login-link"
-              class="inline-link"
-              type="button"
-            >
+            <button id="register-to-login-link" class="inline-link" type="button">
               Sign in
             </button>
           </p>
         </form>
 
-        <!-- Shown after registration when email verification is required -->
-        <section
-          id="verification-panel"
-          class="verification-panel hidden"
-          aria-live="polite"
-        >
+        <section id="verification-panel" class="verification-panel hidden" aria-live="polite">
           <div class="verification-icon">✉️</div>
           <p class="eyebrow">ONE MORE STEP</p>
           <h2>Verify your email</h2>
           <p id="verification-message">
             Check your email and click the verification link before signing in.
           </p>
-          <button
-            id="resend-verification-button"
-            class="inline-link"
-            type="button"
-          >
+          <button id="resend-verification-button" class="inline-link" type="button">
             Resend verification email
           </button>
         </section>
       </div>
     </section>
 
-    <!-- Members-only area -->
     <section id="member-panel" class="hidden">
       <header class="member-heading">
         <div>
           <p class="eyebrow">MEMBERS AREA</p>
           <h2>Welcome, <span id="current-username">member</span></h2>
         </div>
-
-        <button id="logout-button" class="button secondary" type="button">
-          Log out
-        </button>
+        <button id="logout-button" class="member-button" type="button">Log out</button>
       </header>
 
-      <form id="post-form" class="panel post-form">
-        <label for="post-content">Write a post</label>
+      <nav class="member-tabs" aria-label="Post pages">
+  <button
+    class="member-tab-button active"
+    data-member-view="feed"
+    type="button"
+  >
+    🌐 Community Feed
+  </button>
 
-        <textarea
-          id="post-content"
-          maxlength="2000"
-          rows="4"
-          placeholder="Share something with the members…"
-          required
-        ></textarea>
+  <button
+    class="member-tab-button"
+    data-member-view="my-posts"
+    type="button"
+  >
+    ✍️ My Posts
+  </button>
+</nav>
 
-        <div class="post-form-footer">
-          <span class="small-note">Up to 2,000 characters</span>
-          <button class="button primary" type="submit">Publish post</button>
-        </div>
-      </form>
+<section id="feed-view" class="member-view">
+  <form id="post-form" class="post-composer">
+    <label for="post-content">Write a post</label>
+    <textarea
+      id="post-content"
+      maxlength="2000"
+      rows="4"
+      placeholder="Share something with the members…"
+      required
+    ></textarea>
 
-      <section class="feed-section">
-        <div class="feed-heading">
-          <div>
-            <p class="eyebrow">COMMUNITY</p>
-            <h2>Member posts</h2>
-          </div>
+    <div id="image-preview-wrap" class="image-preview-wrap hidden">
+      <img id="image-preview" alt="Selected image preview">
+      <button id="remove-image-button" class="remove-image-button" type="button">
+        Remove image
+      </button>
+    </div>
 
-          <button
-            id="refresh-posts-button"
-            class="button secondary"
-            type="button"
-          >
-            Refresh
-          </button>
-        </div>
+    <div class="composer-footer">
+      <label class="image-pick-button" for="post-image">📷 Add a picture</label>
+      <input
+        id="post-image"
+        class="visually-hidden"
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+      >
+      <span class="helper-text">Images up to 5 MB</span>
+      <button id="publish-button" class="publish-button" type="submit">
+        Publish post
+      </button>
+    </div>
+  </form>
 
-        <div id="post-list" class="post-list"></div>
-      </section>
+  <section class="feed-section">
+    <div class="feed-heading">
+      <div>
+        <p class="eyebrow">COMMUNITY</p>
+        <h2>Member posts</h2>
+      </div>
+
+      <button
+        id="refresh-posts-button"
+        class="member-button light-button"
+        type="button"
+      >
+        Refresh
+      </button>
+    </div>
+
+    <div id="post-list" class="post-list"></div>
+  </section>
+</section>
+
+<section id="my-posts-view" class="member-view hidden">
+  <div class="feed-heading">
+    <div>
+      <p class="eyebrow">YOUR POSTS</p>
+      <h2>Posts you’ve shared</h2>
+    </div>
+
+    <button
+      id="refresh-my-posts-button"
+      class="member-button light-button"
+      type="button"
+    >
+      Refresh
+    </button>
+  </div>
+
+  <div id="my-post-list" class="post-list"></div>
+</section>
     </section>
   </main>
 
-  <!-- Load Supabase before your app.js -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>

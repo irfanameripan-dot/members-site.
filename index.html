@@ -3,40 +3,106 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Members Board</title>
+  <meta name="theme-color" content="#321446">
+  <title>Members Club</title>
   <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
   <main class="page">
-    <header class="header">
-      <div>
-        <p class="eyebrow">MEMBERS COMMUNITY</p>
-        <h1>Members Board</h1>
-        <p class="subtitle">Sign in to share and read posts.</p>
-      </div>
-    </header>
-
+    <!-- Shared status messages -->
     <p id="status" class="status" aria-live="polite"></p>
 
-<section id="verification-panel" class="verification-panel hidden" aria-live="polite">
-  <div class="verification-icon">✉️</div>
-  <div class="verification-copy">
-    <p class="eyebrow">ONE MORE STEP</p>
-    <h2>Check your email to verify your account</h2>
-    <p id="verification-message">
-      We’ll send a verification link to your email address.
-    </p>
-    <button id="resend-verification-button" class="text-button" type="button">
-      Resend verification email
-    </button>
-  </div>
-</section>
+    <!-- Sign-in and registration screen -->
+    <section id="auth-panel" class="auth-screen">
+      <div class="auth-hero">
+        <div class="auth-brand">
+          <span class="auth-logo">M</span>
+          <span>MEMBERS CLUB</span>
+        </div>
 
-    <section id="auth-panel" class="panel">
-      <div class="auth-grid">
-        <form id="register-form">
-          <h2>Create an account</h2>
+        <p class="auth-eyebrow">YOUR COMMUNITY</p>
+        <h2 id="auth-heading">Welcome back</h2>
+        <p class="auth-hero-text">
+          Connect with your members and share what matters.
+        </p>
+
+        <div class="auth-switch">
+          <button
+            id="show-login-button"
+            class="auth-switch-button active"
+            type="button"
+          >
+            Sign in
+          </button>
+
+          <button
+            id="show-register-button"
+            class="auth-switch-button"
+            type="button"
+          >
+            Sign up
+          </button>
+        </div>
+      </div>
+
+      <div class="auth-form-panel">
+        <!-- Login form -->
+        <form id="login-form" class="auth-form">
+          <div class="form-heading">
+            <p class="eyebrow">MEMBER ACCESS</p>
+            <h2>Sign in to your account</h2>
+          </div>
+
+          <label for="login-email">Email</label>
+          <input
+            id="login-email"
+            type="email"
+            autocomplete="email"
+            placeholder="you@example.com"
+            required
+          >
+
+          <label for="login-password">Password</label>
+          <input
+            id="login-password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Your password"
+            required
+          >
+
+          <button
+            id="forgot-password-button"
+            class="forgot-button"
+            type="button"
+          >
+            Forgot password?
+          </button>
+
+          <button class="auth-submit" type="submit">Sign in</button>
+
+          <p class="switch-prompt">
+            Don’t have an account?
+            <button
+              id="login-to-register-link"
+              class="inline-link"
+              type="button"
+            >
+              Sign up
+            </button>
+          </p>
+        </form>
+
+        <!-- Registration form -->
+        <form id="register-form" class="auth-form hidden">
+          <div class="form-heading">
+            <p class="eyebrow">JOIN THE COMMUNITY</p>
+            <h2>Create your account</h2>
+            <p class="form-description">
+              Your username will appear beside your posts.
+            </p>
+          </div>
 
           <label for="register-username">Username</label>
           <input
@@ -69,54 +135,59 @@
             required
           >
 
-          <button class="button primary" type="submit">Register</button>
-          <p class="small-note">
-            Your username appears on your posts. Your email is used for sign-in.
+          <button class="auth-submit" type="submit">Create account</button>
+
+          <p class="switch-prompt">
+            Already a member?
+            <button
+              id="register-to-login-link"
+              class="inline-link"
+              type="button"
+            >
+              Sign in
+            </button>
           </p>
         </form>
 
-        <form id="login-form">
-          <h2>Log in</h2>
-
-          <label for="login-email">Email</label>
-          <input
-            id="login-email"
-            type="email"
-            autocomplete="email"
-            placeholder="you@example.com"
-            required
+        <!-- Shown after registration when email verification is required -->
+        <section
+          id="verification-panel"
+          class="verification-panel hidden"
+          aria-live="polite"
+        >
+          <div class="verification-icon">✉️</div>
+          <p class="eyebrow">ONE MORE STEP</p>
+          <h2>Verify your email</h2>
+          <p id="verification-message">
+            Check your email and click the verification link before signing in.
+          </p>
+          <button
+            id="resend-verification-button"
+            class="inline-link"
+            type="button"
           >
-
-          <label for="login-password">Password</label>
-          <input
-            id="login-password"
-            type="password"
-            autocomplete="current-password"
-            placeholder="Your password"
-            required
-          >
-
-          <button class="button secondary" type="submit">Log in</button>
-          <button id="forgot-password-button" class="text-button" type="button">
-            Forgot password?
+            Resend verification email
           </button>
-        </form>
+        </section>
       </div>
     </section>
 
+    <!-- Members-only area -->
     <section id="member-panel" class="hidden">
-      <div class="member-heading">
+      <header class="member-heading">
         <div>
           <p class="eyebrow">MEMBERS AREA</p>
           <h2>Welcome, <span id="current-username">member</span></h2>
         </div>
+
         <button id="logout-button" class="button secondary" type="button">
           Log out
         </button>
-      </div>
+      </header>
 
       <form id="post-form" class="panel post-form">
         <label for="post-content">Write a post</label>
+
         <textarea
           id="post-content"
           maxlength="2000"
@@ -137,7 +208,12 @@
             <p class="eyebrow">COMMUNITY</p>
             <h2>Member posts</h2>
           </div>
-          <button id="refresh-posts-button" class="button secondary" type="button">
+
+          <button
+            id="refresh-posts-button"
+            class="button secondary"
+            type="button"
+          >
             Refresh
           </button>
         </div>
@@ -147,7 +223,7 @@
     </section>
   </main>
 
-  <!-- Supabase JavaScript library -->
+  <!-- Load Supabase before your app.js -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>

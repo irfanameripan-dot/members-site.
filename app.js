@@ -521,4 +521,40 @@ async function initialize() {
   }
 }
 
+function showAuthForm(formName) {
+  const loginForm = document.getElementById("login-form");
+  const registerForm = document.getElementById("register-form");
+  const heading = document.getElementById("auth-heading");
+  const loginTab = document.getElementById("show-login-button");
+  const registerTab = document.getElementById("show-register-button");
+
+  const showingLogin = formName === "login";
+
+  loginForm.classList.toggle("hidden", !showingLogin);
+  registerForm.classList.toggle("hidden", showingLogin);
+
+  heading.textContent = showingLogin ? "Welcome back" : "Create your account";
+
+  loginTab.classList.toggle("active", showingLogin);
+  registerTab.classList.toggle("active", !showingLogin);
+
+  clearStatus();
+}
+
+document
+  .getElementById("show-login-button")
+  .addEventListener("click", () => showAuthForm("login"));
+
+document
+  .getElementById("show-register-button")
+  .addEventListener("click", () => showAuthForm("register"));
+
+document
+  .getElementById("login-to-register-link")
+  .addEventListener("click", () => showAuthForm("register"));
+
+document
+  .getElementById("register-to-login-link")
+  .addEventListener("click", () => showAuthForm("login"));
+  
 initialize();

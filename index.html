@@ -12,6 +12,7 @@
   <main class="page">
     <p id="status" class="status" aria-live="polite"></p>
 
+    <!-- Sign in and registration -->
     <section id="auth-panel" class="auth-screen">
       <div class="auth-hero">
         <div class="auth-brand">
@@ -46,7 +47,7 @@
           <input id="login-password" type="password" autocomplete="current-password"
             placeholder="Your password" required>
 
-          <button id="forgot-password-button" class="forgot-button" type="button">
+          <button id="forgot-password-button" class="text-button forgot-button" type="button">
             Forgot password?
           </button>
 
@@ -54,7 +55,7 @@
 
           <p class="switch-prompt">
             Don’t have an account?
-            <button id="login-to-register-link" class="inline-link" type="button">
+            <button id="login-to-register-link" class="text-button" type="button">
               Sign up
             </button>
           </p>
@@ -82,7 +83,7 @@
 
           <p class="switch-prompt">
             Already a member?
-            <button id="register-to-login-link" class="inline-link" type="button">
+            <button id="register-to-login-link" class="text-button" type="button">
               Sign in
             </button>
           </p>
@@ -95,13 +96,14 @@
           <p id="verification-message">
             Check your email and click the verification link before signing in.
           </p>
-          <button id="resend-verification-button" class="inline-link" type="button">
+          <button id="resend-verification-button" class="text-button" type="button">
             Resend verification email
           </button>
         </section>
       </div>
     </section>
 
+    <!-- Signed-in members area -->
     <section id="member-panel" class="hidden">
       <header class="member-heading">
         <div>
@@ -111,95 +113,172 @@
         <button id="logout-button" class="member-button" type="button">Log out</button>
       </header>
 
-      <nav class="member-tabs" aria-label="Post pages">
-  <button
-    class="member-tab-button active"
-    data-member-view="feed"
-    type="button"
-  >
-    🌐 Community Feed
-  </button>
+      <!-- Community Feed -->
+      <section id="feed-view" class="member-view">
+        <form id="post-form" class="post-composer">
+          <label for="post-content">Write a post</label>
+          <textarea id="post-content" maxlength="2000" rows="4"
+            placeholder="Share something with the members…" required></textarea>
 
-  <button
-    class="member-tab-button"
-    data-member-view="my-posts"
-    type="button"
-  >
-    ✍️ My Posts
-  </button>
-</nav>
+          <div id="image-preview-wrap" class="image-preview-wrap hidden">
+            <img id="image-preview" alt="Selected image preview">
+            <button id="remove-image-button" class="small-text-button" type="button">
+              Remove image
+            </button>
+          </div>
 
-<section id="feed-view" class="member-view">
-  <form id="post-form" class="post-composer">
-    <label for="post-content">Write a post</label>
-    <textarea
-      id="post-content"
-      maxlength="2000"
-      rows="4"
-      placeholder="Share something with the members…"
-      required
-    ></textarea>
+          <div class="composer-footer">
+            <label class="image-pick-button" for="post-image">📷 Add a picture</label>
+            <input id="post-image" class="visually-hidden" type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif">
+            <span class="helper-text">Images up to 5 MB</span>
+            <button id="publish-button" class="publish-button" type="submit">
+              Publish post
+            </button>
+          </div>
+        </form>
 
-    <div id="image-preview-wrap" class="image-preview-wrap hidden">
-      <img id="image-preview" alt="Selected image preview">
-      <button id="remove-image-button" class="remove-image-button" type="button">
-        Remove image
-      </button>
-    </div>
+        <div class="feed-heading">
+          <div>
+            <p class="eyebrow">COMMUNITY</p>
+            <h2>Member posts</h2>
+          </div>
+          <button id="refresh-posts-button" class="member-button light-button" type="button">
+            Refresh
+          </button>
+        </div>
 
-    <div class="composer-footer">
-      <label class="image-pick-button" for="post-image">📷 Add a picture</label>
-      <input
-        id="post-image"
-        class="visually-hidden"
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
-      >
-      <span class="helper-text">Images up to 5 MB</span>
-      <button id="publish-button" class="publish-button" type="submit">
-        Publish post
-      </button>
-    </div>
-  </form>
+        <div id="post-list" class="post-list"></div>
+      </section>
 
-  <section class="feed-section">
-    <div class="feed-heading">
-      <div>
-        <p class="eyebrow">COMMUNITY</p>
-        <h2>Member posts</h2>
-      </div>
+      <!-- My Posts -->
+      <section id="my-posts-view" class="member-view hidden">
+        <div class="feed-heading">
+          <div>
+            <p class="eyebrow">YOUR POSTS</p>
+            <h2>Posts you’ve shared</h2>
+          </div>
+          <button id="refresh-my-posts-button" class="member-button light-button" type="button">
+            Refresh
+          </button>
+        </div>
 
-      <button
-        id="refresh-posts-button"
-        class="member-button light-button"
-        type="button"
-      >
-        Refresh
-      </button>
-    </div>
+        <div id="my-post-list" class="post-list"></div>
+      </section>
 
-    <div id="post-list" class="post-list"></div>
-  </section>
-</section>
+      <!-- Notifications -->
+      <section id="notifications-view" class="member-view hidden">
+        <div class="feed-heading">
+          <div>
+            <p class="eyebrow">WHAT’S NEW</p>
+            <h2>Notifications</h2>
+          </div>
+          <button id="refresh-notifications-button"
+            class="member-button light-button" type="button">
+            Refresh
+          </button>
+        </div>
 
-<section id="my-posts-view" class="member-view hidden">
-  <div class="feed-heading">
-    <div>
-      <p class="eyebrow">YOUR POSTS</p>
-      <h2>Posts you’ve shared</h2>
-    </div>
+        <div id="notification-list" class="notification-list"></div>
+      </section>
 
-    <button
-      id="refresh-my-posts-button"
-      class="member-button light-button"
-      type="button"
-    >
-      Refresh
-    </button>
-  </div>
+      <!-- Own profile and member directory -->
+      <section id="profile-view" class="member-view hidden">
+        <div class="feed-heading">
+          <div>
+            <p class="eyebrow">YOUR SPACE</p>
+            <h2>My profile</h2>
+          </div>
+        </div>
 
-  <div id="my-post-list" class="post-list"></div>
-</section>
+        <form id="profile-form" class="profile-card">
+          <div class="profile-top">
+            <img id="my-avatar" class="avatar large-avatar" alt="Your profile picture">
+            <div>
+              <strong id="my-profile-username">Your username</strong>
+              <p class="helper-text">This profile is visible to signed-in members.</p>
+            </div>
+          </div>
+
+          <label for="profile-bio">Bio</label>
+          <textarea id="profile-bio" maxlength="300" rows="3"
+            placeholder="Write a short bio, up to 300 characters"></textarea>
+
+          <label class="image-pick-button avatar-upload-button" for="avatar-file">
+            🖼️ Choose profile picture
+          </label>
+          <input id="avatar-file" class="visually-hidden" type="file"
+            accept="image/jpeg,image/png,image/webp">
+
+          <div class="profile-actions">
+            <button id="save-profile-button" class="publish-button" type="submit">
+              Save profile
+            </button>
+          </div>
+        </form>
+
+        <div class="directory-heading">
+          <p class="eyebrow">MEET THE COMMUNITY</p>
+          <h2>Find members</h2>
+        </div>
+
+        <div id="member-directory" class="member-directory"></div>
+      </section>
+
+      <!-- Another member's profile -->
+      <section id="public-profile-view" class="member-view hidden">
+        <button id="back-to-profiles-button" class="back-button" type="button">
+          ← Back to profiles
+        </button>
+
+        <article class="profile-card public-profile-card">
+          <div class="profile-top">
+            <img id="public-avatar" class="avatar large-avatar" alt="Member profile picture">
+            <div>
+              <p class="eyebrow">MEMBER PROFILE</p>
+              <h2 id="public-username">Member</h2>
+            </div>
+          </div>
+
+          <p id="public-bio" class="public-bio"></p>
+
+          <div class="profile-counts">
+            <span><strong id="public-post-count">0</strong> posts</span>
+            <span><strong id="public-follower-count">0</strong> followers</span>
+            <span><strong id="public-following-count">0</strong> following</span>
+          </div>
+
+          <button id="follow-button" class="publish-button" type="button">
+            Follow
+          </button>
+        </article>
+
+        <div class="directory-heading">
+          <p class="eyebrow">SHARED BY THIS MEMBER</p>
+          <h2>Posts</h2>
+        </div>
+
+        <div id="public-post-list" class="post-list"></div>
+      </section>
+
+      <!-- Bottom navigation -->
+      <nav class="bottom-nav" aria-label="Member navigation">
+        <button class="bottom-nav-button active" data-view="feed" type="button">
+          <span>⌂</span><small>Feed</small>
+        </button>
+        <button class="bottom-nav-button" data-view="my-posts" type="button">
+          <span>▤</span><small>My Posts</small>
+        </button>
+        <button class="bottom-nav-button" data-view="notifications" type="button">
+          <span class="notification-icon-wrap">
+            ♡<b id="notification-badge" class="notification-badge hidden">0</b>
+          </span>
+          <small>Alerts</small>
+        </button>
+        <button class="bottom-nav-button" data-view="profile" type="button">
+          <span>◉</span><small>Profile</small>
+        </button>
+      </nav>
     </section>
   </main>
 

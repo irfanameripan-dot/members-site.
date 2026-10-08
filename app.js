@@ -1,36 +1,30 @@
 const SUPABASE_URL = "https://kpetqyojjppgbvmhbwzh.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtwZXRxeW9qanBwZ2J2bWhid3poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMDIyNTQsImV4cCI6MjEwNjg3ODI1NH0.9VbAUZ7yE47gCT4UEMyrxQdNcBMLBdb_GJF1ivsfq4Y";
-// Keep the Supabase Project URL and publishable/anon key
-// from your current app.js. Do not use a service_role or secret key.
 const supabaseClient = window.supabase.createClient(
   SUPABASE_URL,
   SUPABASE_PUBLISHABLE_KEY
 );
+
+const IMAGE_BUCKET = "post-images";
+const AVATAR_BUCKET = "profile-pictures";
+const REACTION_EMOJIS = ["❤️", "😊", "😂", "👍", "🎉"];
+const MAX_POST_IMAGE_SIZE = 5 * 1024 * 1024;
+const MAX_AVATAR_SIZE = 3 * 1024 * 1024;
 
 const statusElement = document.getElementById("status");
 const authPanel = document.getElementById("auth-panel");
 const memberPanel = document.getElementById("member-panel");
 const postList = document.getElementById("post-list");
 const myPostList = document.getElementById("my-post-list");
-
-const verificationPanel = document.getElementById("verification-panel");
-const verificationMessage = document.getElementById("verification-message");
-const resendVerificationButton = document.getElementById(
-  "resend-verification-button"
-);
-
-const postImageInput = document.getElementById("post-image");
-const imagePreviewWrap = document.getElementById("image-preview-wrap");
-const imagePreview = document.getElementById("image-preview");
-
-const REACTION_EMOJIS = ["❤️", "😊", "😂", "👍", "🎉"];
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const IMAGE_BUCKET = "post-images";
+const notificationList = document.getElementById("notification-list");
+const directory = document.getElementById("member-directory");
 
 let currentUser = null;
+let currentProfile = null;
 let pendingVerificationEmail = "";
-let selectedImageFile = null;
-let previewObjectUrl = null;
+let selectedPostImage = null;
+let selectedAvatarImage = null;
+let currentPublicProfile = null;
 
 function showStatus(message, isError = false) {
   statusElement.textContent = message;
@@ -45,70 +39,370 @@ function usernameIsValid(username) {
   return /^[a-z0-9_]{3,20}$/.test(username);
 }
 
-function getRedirectUrl() {
+function redirectUrl() {
   return window.location.origin + window.location.pathname;
 }
 
-function escapeFileName(name) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+function escapeFileName(filename) {
+  return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function formatDate(dateString) {
-  return new Date(dateString).toLocaleString();
+function formatDate(value) {
+  return new Date(value).toLocaleString();
 }
 
-async function loadCurrentProfile(userId) {
+function setView(viewName) {
+  document.querySelectorAll(".member-view").forEach((view) => {
+    view.classList.toggle("hidden", view.id !== `${viewName}-view`);
+  });
+
+  document.querySelectorAll(".bottom-nav-button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === viewName);
+  });
+
+  if (viewName === "notifications") loadNotifications();
+  if (viewName === "profile") loadOwnProfileAndDirectory();
+  if (viewName === "feed" || viewName === "my-posts") loadPosts();
+}
+
+function signedStorageUrl(bucket, path) {
+  if (!path) return Promise.resolve(null);
+
+  return supabaseClient.storage
+    .from(bucket)
+    .createSignedUrl(path, 60 * 60)
+    .then(({ data, error }) => {
+      if (error) {
+        console.error("Could not create image link:", error);
+        return null;
+      }
+      return data.signedUrl;
+    });
+}
+
+async function loadProfile(userId) {
   const { data, error } = await supabaseClient
     .from("profiles")
-    .select("username")
+    .select("id, username, bio, avatar_path, created_at")
     .eq("id", userId)
     .single();
 
   if (error) {
     console.error("Could not load profile:", error);
-    document.getElementById("current-username").textContent = "member";
-    return;
-  }
-
-  document.getElementById("current-username").textContent =
-    data.username || "member";
-}
-
-async function signedImageUrl(imagePath) {
-  if (!imagePath) return null;
-
-  const { data, error } = await supabaseClient.storage
-    .from(IMAGE_BUCKET)
-    .createSignedUrl(imagePath, 60 * 60);
-
-  if (error) {
-    console.error("Could not create image link:", error);
     return null;
   }
 
-  return data.signedUrl;
+  return data;
 }
 
-function createCommentElement(comment, username, isOwnComment, onDelete) {
+async function setAvatarImage(imgElement, avatarPath, fallbackText) {
+  imgElement.alt = fallbackText;
+
+  if (!avatarPath) {
+    imgElement.removeAttribute("src");
+    imgElement.classList.add("avatar-placeholder");
+    return;
+  }
+
+  const url = await signedStorageUrl(AVATAR_BUCKET, avatarPath);
+
+  if (url) {
+    imgElement.src = url;
+    imgElement.classList.remove("avatar-placeholder");
+  } else {
+    imgElement.removeAttribute("src");
+    imgElement.classList.add("avatar-placeholder");
+  }
+}
+
+async function showSignedInApp(user) {
+  currentUser = user;
+  authPanel.classList.add("hidden");
+  memberPanel.classList.remove("hidden");
+
+  currentProfile = await loadProfile(user.id);
+
+  document.getElementById("current-username").textContent =
+    currentProfile?.username || "member";
+
+  await loadUnreadNotificationCount();
+  await loadPosts();
+  setView("feed");
+}
+
+function showSignedOutApp() {
+  currentUser = null;
+  currentProfile = null;
+  authPanel.classList.remove("hidden");
+  memberPanel.classList.add("hidden");
+  postList.replaceChildren();
+  myPostList.replaceChildren();
+  notificationList.replaceChildren();
+}
+
+function showAuthForm(which) {
+  const isLogin = which === "login";
+
+  document.getElementById("login-form").classList.toggle("hidden", !isLogin);
+  document.getElementById("register-form").classList.toggle("hidden", isLogin);
+  document.getElementById("verification-panel").classList.add("hidden");
+
+  document.getElementById("auth-heading").textContent =
+    isLogin ? "Welcome back" : "Create your account";
+
+  document.getElementById("show-login-button").classList.toggle("active", isLogin);
+  document.getElementById("show-register-button").classList.toggle("active", !isLogin);
+
+  clearStatus();
+}
+
+/* ---------- Posts, reactions, comments ---------- */
+
+async function loadPosts() {
+  if (!currentUser) return;
+
+  const { data: posts, error } = await supabaseClient
+    .from("posts")
+    .select("id, author_id, content, image_path, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Could not load posts:", error);
+    showStatus("Could not load posts. Please try refreshing.", true);
+    return;
+  }
+
+  const postIds = (posts || []).map((post) => post.id);
+  const authorIds = [...new Set((posts || []).map((post) => post.author_id))];
+
+  let profiles = [];
+  let comments = [];
+  let reactions = [];
+
+  if (postIds.length) {
+    const [profilesResult, commentsResult, reactionsResult] = await Promise.all([
+      supabaseClient
+        .from("profiles")
+        .select("id, username, avatar_path")
+        .in("id", authorIds),
+
+      supabaseClient
+        .from("comments")
+        .select("id, post_id, author_id, content, created_at")
+        .in("post_id", postIds)
+        .order("created_at", { ascending: true }),
+
+      supabaseClient
+        .from("post_reactions")
+        .select("id, post_id, user_id, emoji")
+        .in("post_id", postIds)
+    ]);
+
+    if (profilesResult.error) console.error(profilesResult.error);
+    if (commentsResult.error) console.error(commentsResult.error);
+    if (reactionsResult.error) console.error(reactionsResult.error);
+
+    profiles = profilesResult.data || [];
+    comments = commentsResult.data || [];
+    reactions = reactionsResult.data || [];
+  }
+
+  const commentAuthorIds = [...new Set(comments.map((comment) => comment.author_id))];
+  const missingIds = commentAuthorIds.filter(
+    (id) => !profiles.some((profile) => profile.id === id)
+  );
+
+  if (missingIds.length) {
+    const result = await supabaseClient
+      .from("profiles")
+      .select("id, username, avatar_path")
+      .in("id", missingIds);
+
+    if (!result.error) profiles.push(...(result.data || []));
+  }
+
+  const profilesById = new Map(
+    profiles.map((profile) => [profile.id, profile])
+  );
+
+  const ownPosts = (posts || []).filter(
+    (post) => post.author_id === currentUser.id
+  );
+
+  await renderPostList(postList, posts || [], profilesById, comments, reactions);
+  await renderPostList(myPostList, ownPosts, profilesById, comments, reactions);
+}
+
+async function renderPostList(target, posts, profilesById, comments, reactions) {
+  if (!posts.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = target === myPostList
+      ? "You haven’t shared a post yet. Write one in the Feed."
+      : "No posts yet. You can write the first one!";
+    target.replaceChildren(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  for (const post of posts) {
+    const authorProfile = profilesById.get(post.author_id);
+    const card = await buildPostCard(
+      post,
+      authorProfile,
+      profilesById,
+      comments,
+      reactions
+    );
+    fragment.appendChild(card);
+  }
+
+  target.replaceChildren(fragment);
+}
+
+async function buildPostCard(post, authorProfile, profilesById, comments, reactions) {
+  const card = document.createElement("article");
+  card.className = "post-card";
+  card.dataset.postId = String(post.id);
+
+  const header = document.createElement("div");
+  header.className = "post-header";
+
+  const authorArea = document.createElement("div");
+  authorArea.className = "post-author-area";
+
+  const authorButton = document.createElement("button");
+  authorButton.className = "post-author";
+  authorButton.type = "button";
+  authorButton.textContent = authorProfile?.username || "Member";
+  authorButton.addEventListener("click", () => openPublicProfile(post.author_id));
+
+  const date = document.createElement("time");
+  date.className = "post-date";
+  date.dateTime = post.created_at;
+  date.textContent = formatDate(post.created_at);
+
+  authorArea.append(authorButton, date);
+  header.appendChild(authorArea);
+
+  if (post.author_id === currentUser.id) {
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "delete-post-button";
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", () => deletePost(post));
+    header.appendChild(deleteButton);
+  }
+
+  const content = document.createElement("p");
+  content.className = "post-content";
+  content.textContent = post.content;
+  card.append(header, content);
+
+  if (post.image_path) {
+    const url = await signedStorageUrl(IMAGE_BUCKET, post.image_path);
+    if (url) {
+      const image = document.createElement("img");
+      image.className = "post-image";
+      image.src = url;
+      image.alt = `Picture attached to ${authorProfile?.username || "member"}'s post`;
+      image.loading = "lazy";
+      card.appendChild(image);
+    }
+  }
+
+  const postReactions = reactions.filter((item) => item.post_id === post.id);
+  const actionRow = document.createElement("div");
+  actionRow.className = "post-actions";
+
+  REACTION_EMOJIS.forEach((emoji) => {
+    const matches = postReactions.filter((item) => item.emoji === emoji);
+    const mine = matches.some((item) => item.user_id === currentUser.id);
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = `reaction-button${mine ? " selected" : ""}`;
+    button.dataset.emoji = emoji;
+    button.dataset.count = String(matches.length);
+    button.textContent = `${emoji} ${matches.length || ""}`.trim();
+    button.setAttribute("aria-label", `${emoji}, ${matches.length} reactions`);
+
+    button.addEventListener("click", () => toggleReaction(post.id, emoji, button));
+    actionRow.appendChild(button);
+  });
+
+  card.appendChild(actionRow);
+
+  const commentList = document.createElement("div");
+  commentList.className = "comment-list";
+
+  const postComments = comments.filter((item) => item.post_id === post.id);
+
+  if (!postComments.length) {
+    const empty = document.createElement("small");
+    empty.className = "post-date";
+    empty.textContent = "No comments yet.";
+    commentList.appendChild(empty);
+  }
+
+  postComments.forEach((comment) => {
+    const commentProfile = profilesById.get(comment.author_id);
+    commentList.appendChild(
+      buildComment(comment, commentProfile, comment.author_id === currentUser.id)
+    );
+  });
+
+  card.appendChild(commentList);
+
+  const commentForm = document.createElement("form");
+  commentForm.className = "comment-form";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = 1000;
+  input.placeholder = "Write a comment…";
+  input.setAttribute("aria-label", "Write a comment");
+  input.required = true;
+
+  const button = document.createElement("button");
+  button.type = "submit";
+  button.textContent = "Comment";
+
+  commentForm.append(input, button);
+  commentForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    button.disabled = true;
+    await addComment(post, input.value);
+    button.disabled = false;
+  });
+
+  card.appendChild(commentForm);
+  return card;
+}
+
+function buildComment(comment, profile, isOwnComment) {
   const item = document.createElement("article");
   item.className = "comment";
 
-  const meta = document.createElement("div");
-  meta.className = "comment-meta";
+  const header = document.createElement("div");
+  header.className = "comment-header";
 
-  const author = document.createElement("strong");
+  const author = document.createElement("button");
   author.className = "comment-author";
-  author.textContent = username || "Member";
+  author.type = "button";
+  author.textContent = profile?.username || "Member";
+  author.addEventListener("click", () => openPublicProfile(comment.author_id));
 
-  meta.appendChild(author);
+  header.appendChild(author);
 
   if (isOwnComment) {
     const deleteButton = document.createElement("button");
     deleteButton.className = "comment-delete";
     deleteButton.type = "button";
     deleteButton.textContent = "Delete";
-    deleteButton.addEventListener("click", onDelete);
-    meta.appendChild(deleteButton);
+    deleteButton.addEventListener("click", () => deleteComment(comment.id));
+    header.appendChild(deleteButton);
   }
 
   const text = document.createElement("p");
@@ -119,418 +413,647 @@ function createCommentElement(comment, username, isOwnComment, onDelete) {
   time.className = "post-date";
   time.textContent = formatDate(comment.created_at);
 
-  item.append(meta, text, time);
+  item.append(header, text, time);
   return item;
 }
 
-function makeReactionButton(postId, emoji, reactions) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "reaction-button";
+async function toggleReaction(postId, emoji, clickedButton) {
+  if (!currentUser || clickedButton.disabled) return;
 
-  const forThisEmoji = reactions.filter((reaction) => reaction.emoji === emoji);
-  const chosenByMe = forThisEmoji.some(
-    (reaction) => reaction.user_id === currentUser.id
-  );
+  const wasSelected = clickedButton.classList.contains("selected");
+  const matchingButtons = [
+    ...document.querySelectorAll(
+      `.post-card[data-post-id="${postId}"] .reaction-button`
+    )
+  ].filter((button) => button.dataset.emoji === emoji);
 
-  button.classList.toggle("selected", chosenByMe);
-  button.textContent = `${emoji} ${forThisEmoji.length || ""}`.trim();
-  button.dataset.count = String(forThisEmoji.length);
-button.dataset.emoji = emoji;
-  button.setAttribute(
-    "aria-label",
-    `${emoji} reaction, ${forThisEmoji.length} reactions`
-  );
+  matchingButtons.forEach((button) => {
+    button.disabled = true;
+    button.classList.add("is-animating");
 
- button.addEventListener("click", async () => {
-  if (button.disabled) return;
+    const oldCount = Number(button.dataset.count || 0);
+    const nextCount = Math.max(0, oldCount + (wasSelected ? -1 : 1));
 
-  button.classList.remove("is-animating");
-  void button.offsetWidth; // Restart the animation on each tap.
-  button.classList.add("is-animating");
-
-  await toggleReaction(postId, emoji, button);
-});
-
-  return button;
-}
-
-async function renderPost(post, username, comments, reactions, profilesById) {
-  const card = document.createElement("article");
-  card.className = "post-card";
-card.dataset.postId = String(post.id);
-
-  const header = document.createElement("div");
-  header.className = "post-header";
-
-  const authorBlock = document.createElement("div");
-
-  const author = document.createElement("p");
-  author.className = "post-author";
-  author.textContent = username || "Member";
-
-  const date = document.createElement("time");
-  date.className = "post-date";
-  date.dateTime = post.created_at;
-  date.textContent = formatDate(post.created_at);
-
-  authorBlock.append(author, date);
-  header.appendChild(authorBlock);
-
-  if (post.author_id === currentUser.id) {
-    const deleteButton = document.createElement("button");
-    deleteButton.className = "delete-post-button";
-    deleteButton.type = "button";
-    deleteButton.textContent = "Delete post";
-    deleteButton.addEventListener("click", () => deletePost(post));
-    header.appendChild(deleteButton);
-  }
-
-  const content = document.createElement("p");
-  content.className = "post-content";
-  content.textContent = post.content;
-
-  card.append(header, content);
-
-  if (post.image_path) {
-    const imageUrl = await signedImageUrl(post.image_path);
-
-    if (imageUrl) {
-      const image = document.createElement("img");
-      image.className = "post-image";
-      image.src = imageUrl;
-      image.alt = `Picture attached to ${username || "member"}'s post`;
-      image.loading = "lazy";
-      card.appendChild(image);
-    }
-  }
-
-  const actionRow = document.createElement("div");
-  actionRow.className = "post-actions";
-
-  const postReactions = reactions.filter(
-    (reaction) => reaction.post_id === post.id
-  );
-
-  REACTION_EMOJIS.forEach((emoji) => {
-    actionRow.appendChild(
-      makeReactionButton(post.id, emoji, postReactions)
-    );
+    button.dataset.count = String(nextCount);
+    button.textContent = `${emoji} ${nextCount || ""}`.trim();
+    button.classList.toggle("selected", !wasSelected);
   });
 
-  card.appendChild(actionRow);
+  const result = wasSelected
+    ? await supabaseClient
+        .from("post_reactions")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", currentUser.id)
+        .eq("emoji", emoji)
+    : await supabaseClient
+        .from("post_reactions")
+        .insert({ post_id: postId, user_id: currentUser.id, emoji });
 
-  const commentList = document.createElement("div");
-  commentList.className = "comment-list";
-
-  const postComments = comments.filter(
-    (comment) => comment.post_id === post.id
-  );
-
-  postComments.forEach((comment) => {
-    const commentUsername = profilesById.get(comment.author_id) || "Member";
-    const ownComment = comment.author_id === currentUser.id;
-
-    commentList.appendChild(
-      createCommentElement(
-        comment,
-        commentUsername,
-        ownComment,
-        () => deleteComment(comment.id)
-      )
-    );
-  });
-
-  if (postComments.length === 0) {
-    const noComments = document.createElement("small");
-    noComments.className = "post-date";
-    noComments.textContent = "No comments yet.";
-    commentList.appendChild(noComments);
-  }
-
-  card.appendChild(commentList);
-
-  const commentForm = document.createElement("form");
-  commentForm.className = "comment-form";
-
-  const commentInput = document.createElement("input");
-  commentInput.type = "text";
-  commentInput.maxLength = 1000;
-  commentInput.placeholder = "Write a comment…";
-  commentInput.setAttribute("aria-label", "Write a comment");
-  commentInput.required = true;
-
-  const commentButton = document.createElement("button");
-  commentButton.type = "submit";
-  commentButton.textContent = "Comment";
-
-  commentForm.append(commentInput, commentButton);
-
- commentForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  commentButton.disabled = true;
-  commentButton.textContent = "Sending…";
-
-  await addComment(post.id, commentInput.value);
-
-  commentButton.disabled = false;
-  commentButton.textContent = "Comment";
-});
-
-  card.appendChild(commentForm);
-  return card;
-}
-
-async function loadPosts() {
-  const { data: posts, error: postsError } = await supabaseClient
-    .from("posts")
-    .select("id, author_id, content, image_path, created_at")
-    .order("created_at", { ascending: false });
-
-  if (postsError) {
-    console.error("Could not load posts:", postsError);
-    showStatus("Could not load posts. Please try refreshing.", true);
+  if (result.error) {
+    console.error("Reaction error:", result.error);
+    showStatus("Could not save your reaction. Please try again.", true);
+    await loadPosts();
     return;
   }
 
-  if (!posts || posts.length === 0) {
-    const emptyFeed = document.createElement("div");
-    emptyFeed.className = "empty-state";
-    emptyFeed.textContent = "No posts yet. You can write the first one!";
+  matchingButtons.forEach((button) => {
+    button.disabled = false;
+  });
+}
 
-    const emptyMine = document.createElement("div");
-    emptyMine.className = "empty-state";
-    emptyMine.textContent = "You haven’t shared a post yet.";
+async function addComment(post, rawContent) {
+  const content = rawContent.trim();
+  if (!content) return;
 
-    postList.replaceChildren(emptyFeed);
-    myPostList.replaceChildren(emptyMine);
+  if (content.length > 1000) {
+    showStatus("Comments can be up to 1,000 characters.", true);
     return;
   }
 
-  const postIds = posts.map((post) => post.id);
-  const profileIds = [...new Set(posts.map((post) => post.author_id))];
+  const { error } = await supabaseClient
+    .from("comments")
+    .insert({
+      post_id: post.id,
+      author_id: currentUser.id,
+      content
+    });
 
-  const [profilesResult, commentsResult, reactionsResult] = await Promise.all([
-    supabaseClient
-      .from("profiles")
-      .select("id, username")
-      .in("id", profileIds),
-
-    supabaseClient
-      .from("comments")
-      .select("id, post_id, author_id, content, created_at")
-      .in("post_id", postIds)
-      .order("created_at", { ascending: true }),
-
-    supabaseClient
-      .from("post_reactions")
-      .select("id, post_id, user_id, emoji")
-      .in("post_id", postIds)
-  ]);
-
-  if (profilesResult.error) console.error(profilesResult.error);
-  if (commentsResult.error) console.error(commentsResult.error);
-  if (reactionsResult.error) console.error(reactionsResult.error);
-
-  const profiles = profilesResult.data || [];
-  const comments = commentsResult.data || [];
-  const reactions = reactionsResult.data || [];
-
-  const commentAuthorIds = [
-    ...new Set(comments.map((comment) => comment.author_id))
-  ];
-
-  const missingProfileIds = commentAuthorIds.filter(
-    (id) => !profiles.some((profile) => profile.id === id)
-  );
-
-  let commentProfiles = [];
-
-  if (missingProfileIds.length > 0) {
-    const result = await supabaseClient
-      .from("profiles")
-      .select("id, username")
-      .in("id", missingProfileIds);
-
-    if (!result.error) {
-      commentProfiles = result.data || [];
-    }
+  if (error) {
+    console.error("Comment error:", error);
+    showStatus("Could not add your comment. Please try again.", true);
+    return;
   }
 
-  const profilesById = new Map(
-    [...profiles, ...commentProfiles].map((profile) => [
-      profile.id,
-      profile.username
-    ])
-  );
-
-  async function renderPostList(target, postsToShow, emptyText) {
-    if (postsToShow.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = emptyText;
-      target.replaceChildren(empty);
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    for (const post of postsToShow) {
-      const card = await renderPost(
-        post,
-        profilesById.get(post.author_id) || "Member",
-        comments,
-        reactions,
-        profilesById
-      );
-
-      fragment.appendChild(card);
-    }
-
-    target.replaceChildren(fragment);
-  }
-
-  // Keep the full list in the Community Feed.
-  await renderPostList(
-    postList,
-    posts,
-    "No posts yet. You can write the first one!"
-  );
-
-  // Show only the signed-in member’s posts in My Posts.
-  const ownPosts = posts.filter(
-    (post) => post.author_id === currentUser.id
-  );
-
-  await renderPostList(
-    myPostList,
-    ownPosts,
-    "You haven’t shared a post yet. Create one in the Community Feed."
-  );
+  await loadPosts();
+  clearStatus();
 }
 
-async function showSignedInApp(user) {
-  currentUser = user;
-  authPanel.classList.add("hidden");
-  memberPanel.classList.remove("hidden");
-  verificationPanel.classList.add("hidden");
+async function deleteComment(commentId) {
+  if (!window.confirm("Delete your comment?")) return;
 
-  await loadCurrentProfile(user.id);
+  const { error } = await supabaseClient
+    .from("comments")
+    .delete()
+    .eq("id", commentId)
+    .eq("author_id", currentUser.id);
+
+  if (error) {
+    showStatus("Could not delete your comment.", true);
+    return;
+  }
+
   await loadPosts();
 }
 
-function showSignedOutApp() {
-  currentUser = null;
-  authPanel.classList.remove("hidden");
-  memberPanel.classList.add("hidden");
-  postList.replaceChildren();
-}
-
-function showAuthForm(formName) {
-  const showingLogin = formName === "login";
-
-  document.getElementById("login-form").classList.toggle("hidden", !showingLogin);
-  document.getElementById("register-form").classList.toggle("hidden", showingLogin);
-  verificationPanel.classList.add("hidden");
-
-  document.getElementById("auth-heading").textContent =
-    showingLogin ? "Welcome back" : "Create your account";
-
-  document.getElementById("show-login-button").classList.toggle(
-    "active",
-    showingLogin
-  );
-
-  document.getElementById("show-register-button").classList.toggle(
-    "active",
-    !showingLogin
-  );
-
-  clearStatus();
-}
-
-function clearImageSelection() {
-  selectedImageFile = null;
-  postImageInput.value = "";
-  imagePreviewWrap.classList.add("hidden");
-
-  if (previewObjectUrl) {
-    URL.revokeObjectURL(previewObjectUrl);
-    previewObjectUrl = null;
-  }
-
-  imagePreview.removeAttribute("src");
-}
-
-postImageInput.addEventListener("change", () => {
-  clearStatus();
-
-  const file = postImageInput.files[0];
-
-  if (!file) {
-    clearImageSelection();
+async function deletePost(post) {
+  if (!window.confirm("Delete this post? Its comments and reactions will also be removed.")) {
     return;
   }
 
-  const allowedTypes = [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "image/gif"
-  ];
+  const { error } = await supabaseClient
+    .from("posts")
+    .delete()
+    .eq("id", post.id)
+    .eq("author_id", currentUser.id);
 
-  if (!allowedTypes.includes(file.type)) {
-    clearImageSelection();
-    showStatus("Choose a JPG, PNG, WEBP, or GIF image.", true);
+  if (error) {
+    console.error(error);
+    showStatus("Could not delete that post.", true);
     return;
   }
 
-  if (file.size > MAX_IMAGE_BYTES) {
-    clearImageSelection();
-    showStatus("That image is larger than 5 MB. Choose a smaller image.", true);
+  if (post.image_path) {
+    await supabaseClient.storage.from(IMAGE_BUCKET).remove([post.image_path]);
+  }
+
+  await loadPosts();
+}
+
+/* ---------- Post image upload ---------- */
+
+document.getElementById("post-image").addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+  if (!validTypes.includes(file.type) || file.size > MAX_POST_IMAGE_SIZE) {
+    event.target.value = "";
+    showStatus("Choose a JPG, PNG, WEBP, or GIF image under 5 MB.", true);
     return;
   }
 
-  selectedImageFile = file;
-
-  if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
-
-  previewObjectUrl = URL.createObjectURL(file);
-  imagePreview.src = previewObjectUrl;
-  imagePreviewWrap.classList.remove("hidden");
+  selectedPostImage = file;
+  document.getElementById("image-preview").src = URL.createObjectURL(file);
+  document.getElementById("image-preview-wrap").classList.remove("hidden");
 });
 
 document.getElementById("remove-image-button").addEventListener("click", () => {
-  clearImageSelection();
+  selectedPostImage = null;
+  document.getElementById("post-image").value = "";
+  document.getElementById("image-preview").removeAttribute("src");
+  document.getElementById("image-preview-wrap").classList.add("hidden");
 });
 
-async function uploadSelectedImage() {
-  if (!selectedImageFile) return null;
+async function uploadPostImage() {
+  if (!selectedPostImage) return null;
 
-  const extension = selectedImageFile.name.includes(".")
-    ? selectedImageFile.name.split(".").pop().toLowerCase()
-    : "jpg";
-
-  const safeOriginalName = escapeFileName(
-    selectedImageFile.name.replace(/\.[^.]+$/, "")
-  );
-
-  const filePath =
-    `${currentUser.id}/${crypto.randomUUID()}-${safeOriginalName}.${extension}`;
+  const extension = selectedPostImage.name.split(".").pop().toLowerCase();
+  const path =
+    `${currentUser.id}/${crypto.randomUUID()}-${escapeFileName(selectedPostImage.name)}`;
 
   const { error } = await supabaseClient.storage
     .from(IMAGE_BUCKET)
-    .upload(filePath, selectedImageFile, {
-      cacheControl: "3600",
+    .upload(path, selectedPostImage, {
       upsert: false,
-      contentType: selectedImageFile.type
+      contentType: selectedPostImage.type
     });
 
   if (error) throw error;
-
-  return filePath;
+  return path;
 }
+
+document.getElementById("post-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const content = document.getElementById("post-content").value.trim();
+
+  if (!content) {
+    showStatus("Write something before publishing.", true);
+    return;
+  }
+
+  const button = document.getElementById("publish-button");
+  button.disabled = true;
+  button.textContent = "Publishing…";
+
+  let imagePath = null;
+
+  try {
+    imagePath = await uploadPostImage();
+
+    const { error } = await supabaseClient.from("posts").insert({
+      author_id: currentUser.id,
+      content,
+      image_path: imagePath
+    });
+
+    if (error) throw error;
+
+    document.getElementById("post-content").value = "";
+    selectedPostImage = null;
+    document.getElementById("post-image").value = "";
+    document.getElementById("image-preview").removeAttribute("src");
+    document.getElementById("image-preview-wrap").classList.add("hidden");
+
+    await loadPosts();
+    clearStatus();
+  } catch (error) {
+    console.error("Could not publish:", error);
+
+    if (imagePath) {
+      await supabaseClient.storage.from(IMAGE_BUCKET).remove([imagePath]);
+    }
+
+    showStatus("Could not publish. Check your Supabase storage and database setup.", true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Publish post";
+  }
+});
+
+/* ---------- Profile and following ---------- */
+
+async function loadOwnProfileAndDirectory() {
+  if (!currentUser) return;
+
+  currentProfile = await loadProfile(currentUser.id);
+
+  if (currentProfile) {
+    document.getElementById("my-profile-username").textContent =
+      currentProfile.username;
+    document.getElementById("profile-bio").value =
+      currentProfile.bio || "";
+
+    await setAvatarImage(
+      document.getElementById("my-avatar"),
+      currentProfile.avatar_path,
+      "Your profile picture"
+    );
+  }
+
+  await loadDirectory();
+}
+
+async function loadDirectory() {
+  const { data: profiles, error } = await supabaseClient
+    .from("profiles")
+    .select("id, username, bio, avatar_path")
+    .neq("id", currentUser.id)
+    .order("username");
+
+  if (error) {
+    console.error("Directory error:", error);
+    showStatus("Could not load member profiles.", true);
+    return;
+  }
+
+  if (!profiles.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "No other member profiles yet.";
+    directory.replaceChildren(empty);
+    return;
+  }
+
+  const { data: follows, error: followError } = await supabaseClient
+    .from("follows")
+    .select("followed_id")
+    .eq("follower_id", currentUser.id);
+
+  if (followError) console.error(followError);
+
+  const followingIds = new Set((follows || []).map((row) => row.followed_id));
+  const fragment = document.createDocumentFragment();
+
+  for (const profile of profiles) {
+    const card = document.createElement("article");
+    card.className = "directory-card";
+
+    const avatar = document.createElement("img");
+    avatar.className = "avatar";
+    await setAvatarImage(avatar, profile.avatar_path, `${profile.username}'s picture`);
+
+    const info = document.createElement("div");
+    info.className = "directory-card-info";
+
+    const name = document.createElement("button");
+    name.className = "profile-name-button";
+    name.type = "button";
+    name.textContent = profile.username;
+    name.addEventListener("click", () => openPublicProfile(profile.id));
+
+    const bio = document.createElement("p");
+    bio.textContent = profile.bio || "No bio yet.";
+
+    info.append(name, bio);
+
+    const followButton = document.createElement("button");
+    followButton.className = "follow-button";
+    followButton.type = "button";
+
+    const alreadyFollowing = followingIds.has(profile.id);
+    followButton.textContent = alreadyFollowing ? "Following" : "Follow";
+    followButton.classList.toggle("following", alreadyFollowing);
+    followButton.addEventListener("click", async () => {
+      await toggleFollow(profile.id);
+    });
+
+    card.append(avatar, info, followButton);
+    fragment.appendChild(card);
+  }
+
+  directory.replaceChildren(fragment);
+}
+
+async function toggleFollow(targetId) {
+  const { data: existing, error: lookupError } = await supabaseClient
+    .from("follows")
+    .select("id")
+    .eq("follower_id", currentUser.id)
+    .eq("followed_id", targetId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error(lookupError);
+    showStatus("Could not update follow status.", true);
+    return;
+  }
+
+  const result = existing
+    ? await supabaseClient
+        .from("follows")
+        .delete()
+        .eq("follower_id", currentUser.id)
+        .eq("followed_id", targetId)
+    : await supabaseClient
+        .from("follows")
+        .insert({ follower_id: currentUser.id, followed_id: targetId });
+
+  if (result.error) {
+    console.error(result.error);
+    showStatus("Could not update follow status.", true);
+    return;
+  }
+
+  await loadDirectory();
+
+  if (currentPublicProfile?.id === targetId) {
+    await openPublicProfile(targetId);
+  }
+
+  clearStatus();
+}
+
+async function getFollowCounts(userId) {
+  const [followersResult, followingResult] = await Promise.all([
+    supabaseClient
+      .from("follows")
+      .select("id", { count: "exact", head: true })
+      .eq("followed_id", userId),
+
+    supabaseClient
+      .from("follows")
+      .select("id", { count: "exact", head: true })
+      .eq("follower_id", userId)
+  ]);
+
+  return {
+    followers: followersResult.count || 0,
+    following: followingResult.count || 0
+  };
+}
+
+async function openPublicProfile(userId) {
+  if (userId === currentUser.id) {
+    setView("profile");
+    return;
+  }
+
+  const profile = await loadProfile(userId);
+
+  if (!profile) {
+    showStatus("Could not open that member’s profile.", true);
+    return;
+  }
+
+  currentPublicProfile = profile;
+
+  document.getElementById("public-username").textContent = profile.username;
+  document.getElementById("public-bio").textContent =
+    profile.bio || "This member hasn’t added a bio yet.";
+
+  await setAvatarImage(
+    document.getElementById("public-avatar"),
+    profile.avatar_path,
+    `${profile.username}'s profile picture`
+  );
+
+  const [counts, followingResult, postsResult] = await Promise.all([
+    getFollowCounts(userId),
+
+    supabaseClient
+      .from("follows")
+      .select("id")
+      .eq("follower_id", currentUser.id)
+      .eq("followed_id", userId)
+      .maybeSingle(),
+
+    supabaseClient
+      .from("posts")
+      .select("id, author_id, content, image_path, created_at")
+      .eq("author_id", userId)
+      .order("created_at", { ascending: false })
+  ]);
+
+  document.getElementById("public-follower-count").textContent = counts.followers;
+  document.getElementById("public-following-count").textContent = counts.following;
+
+  const profilePosts = postsResult.data || [];
+  document.getElementById("public-post-count").textContent = profilePosts.length;
+
+  const followButton = document.getElementById("follow-button");
+  const isFollowing = Boolean(followingResult.data);
+
+  followButton.textContent = isFollowing ? "Following" : "Follow";
+  followButton.classList.toggle("following", isFollowing);
+  followButton.onclick = () => toggleFollow(userId);
+
+  await renderPublicPosts(profilePosts);
+  setView("public-profile");
+}
+
+async function renderPublicPosts(posts) {
+  const target = document.getElementById("public-post-list");
+
+  if (!posts.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "This member hasn’t posted yet.";
+    target.replaceChildren(empty);
+    return;
+  }
+
+  const authorIds = [...new Set(posts.map((post) => post.author_id))];
+  const postIds = posts.map((post) => post.id);
+
+  const [profilesResult, commentsResult, reactionsResult] = await Promise.all([
+    supabaseClient.from("profiles").select("id, username, avatar_path").in("id", authorIds),
+    supabaseClient.from("comments").select("id, post_id, author_id, content, created_at").in("post_id", postIds),
+    supabaseClient.from("post_reactions").select("id, post_id, user_id, emoji").in("post_id", postIds)
+  ]);
+
+  const profiles = profilesResult.data || [];
+  const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+  const comments = commentsResult.data || [];
+  const reactions = reactionsResult.data || [];
+  const fragment = document.createDocumentFragment();
+
+  for (const post of posts) {
+    fragment.appendChild(
+      await buildPostCard(
+        post,
+        profileMap.get(post.author_id),
+        profileMap,
+        comments,
+        reactions
+      )
+    );
+  }
+
+  target.replaceChildren(fragment);
+}
+
+/* Save bio and optional avatar */
+document.getElementById("avatar-file").addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+
+  if (!allowed.includes(file.type) || file.size > MAX_AVATAR_SIZE) {
+    selectedAvatarImage = null;
+    event.target.value = "";
+    showStatus("Choose a JPG, PNG, or WEBP picture under 3 MB.", true);
+    return;
+  }
+
+  selectedAvatarImage = file;
+  document.getElementById("my-avatar").src = URL.createObjectURL(file);
+});
+
+document.getElementById("profile-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const bio = document.getElementById("profile-bio").value.trim();
+
+  if (bio.length > 300) {
+    showStatus("Your bio can be up to 300 characters.", true);
+    return;
+  }
+
+  const button = document.getElementById("save-profile-button");
+  button.disabled = true;
+  button.textContent = "Saving…";
+
+  try {
+    let avatarPath = currentProfile?.avatar_path || null;
+
+    if (selectedAvatarImage) {
+      const extension = selectedAvatarImage.name.split(".").pop().toLowerCase();
+      const newPath =
+        `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
+
+      const { error: uploadError } = await supabaseClient.storage
+        .from(AVATAR_BUCKET)
+        .upload(newPath, selectedAvatarImage, {
+          upsert: false,
+          contentType: selectedAvatarImage.type
+        });
+
+      if (uploadError) throw uploadError;
+      avatarPath = newPath;
+    }
+
+    const { error } = await supabaseClient
+      .from("profiles")
+      .update({ bio, avatar_path: avatarPath })
+      .eq("id", currentUser.id);
+
+    if (error) throw error;
+
+    currentProfile = await loadProfile(currentUser.id);
+    selectedAvatarImage = null;
+
+    await loadOwnProfileAndDirectory();
+    showStatus("Profile saved.");
+  } catch (error) {
+    console.error("Profile save error:", error);
+    showStatus("Could not save the profile. Check your storage setup.", true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Save profile";
+  }
+});
+
+/* ---------- Notifications ---------- */
+
+async function loadUnreadNotificationCount() {
+  if (!currentUser) return;
+
+  const { count, error } = await supabaseClient
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
+
+  if (error) {
+    console.error("Notification count error:", error);
+    return;
+  }
+
+  const badge = document.getElementById("notification-badge");
+  badge.textContent = count > 99 ? "99+" : String(count || 0);
+  badge.classList.toggle("hidden", !count);
+}
+
+async function loadNotifications() {
+  if (!currentUser) return;
+
+  const { data: notifications, error } = await supabaseClient
+    .from("notifications")
+    .select("id, recipient_id, actor_id, notification_type, post_id, created_at, read_at")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    console.error("Notification load error:", error);
+    showStatus("Could not load notifications.", true);
+    return;
+  }
+
+  if (!notifications.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "You don’t have notifications yet.";
+    notificationList.replaceChildren(empty);
+    return;
+  }
+
+  const actorIds = [...new Set(notifications.map((item) => item.actor_id))];
+
+  const { data: profiles, error: profilesError } = await supabaseClient
+    .from("profiles")
+    .select("id, username")
+    .in("id", actorIds);
+
+  if (profilesError) console.error(profilesError);
+
+  const names = new Map(
+    (profiles || []).map((profile) => [profile.id, profile.username])
+  );
+
+  const fragment = document.createDocumentFragment();
+
+  notifications.forEach((notification) => {
+    const actorName = names.get(notification.actor_id) || "A member";
+    const card = document.createElement("article");
+    card.className = `notification-card${notification.read_at ? "" : " unread"}`;
+
+    const icon = document.createElement("span");
+    icon.className = "notification-emoji";
+
+    const copy = document.createElement("div");
+    copy.className = "notification-copy";
+
+    const message = document.createElement("p");
+
+    if (notification.notification_type === "follow") {
+      icon.textContent = "👤";
+      message.textContent = `${actorName} followed you.`;
+    } else if (notification.notification_type === "reaction") {
+      icon.textContent = "💜";
+      message.textContent = `${actorName} reacted to your post.`;
+    } else {
+      icon.textContent = "💬";
+      message.textContent = `${actorName} commented on your post.`;
+    }
+
+    const date = document.createElement("small");
+    date.textContent = formatDate(notification.created_at);
+
+    copy.append(message, date);
+    card.append(icon, copy);
+    fragment.appendChild(card);
+  });
+
+  notificationList.replaceChildren(fragment);
+
+  const unreadIds = notifications
+    .filter((item) => !item.read_at)
+    .map((item) => item.id);
+
+  if (unreadIds.length) {
+    await supabaseClient
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .in("id", unreadIds);
+
+    await loadUnreadNotificationCount();
+  }
+}
+
+/* ---------- Registration and login ---------- */
 
 document.getElementById("register-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -538,18 +1061,14 @@ document.getElementById("register-form").addEventListener("submit", async (event
 
   const username = document
     .getElementById("register-username")
-    .value
-    .trim()
+    .value.trim()
     .toLowerCase();
 
   const email = document.getElementById("register-email").value.trim();
   const password = document.getElementById("register-password").value;
 
   if (!usernameIsValid(username)) {
-    showStatus(
-      "Username must be 3–20 characters and use only letters, numbers, or underscores.",
-      true
-    );
+    showStatus("Username must be 3–20 characters and use letters, numbers, or underscores.", true);
     return;
   }
 
@@ -568,7 +1087,7 @@ document.getElementById("register-form").addEventListener("submit", async (event
       password,
       options: {
         data: { username },
-        emailRedirectTo: getRedirectUrl()
+        emailRedirectTo: redirectUrl()
       }
     });
 
@@ -579,17 +1098,16 @@ document.getElementById("register-form").addEventListener("submit", async (event
 
     if (data.session && data.user) {
       await showSignedInApp(data.user);
-      showStatus("Your account is ready. Welcome!");
       return;
     }
 
     pendingVerificationEmail = email;
-    verificationMessage.textContent =
-      `We sent a verification link to ${email}. Open that email and click the link before logging in. Check your spam folder if you don’t see it.`;
+    document.getElementById("verification-message").textContent =
+      `We sent a verification link to ${email}. Open it before logging in. Check your spam folder if you don’t see it.`;
 
     document.getElementById("login-form").classList.add("hidden");
     document.getElementById("register-form").classList.add("hidden");
-    verificationPanel.classList.remove("hidden");
+    document.getElementById("verification-panel").classList.remove("hidden");
   } catch (error) {
     console.error(error);
     showStatus("Could not create your account. Please try again.", true);
@@ -599,30 +1117,22 @@ document.getElementById("register-form").addEventListener("submit", async (event
   }
 });
 
-resendVerificationButton.addEventListener("click", async () => {
+document.getElementById("resend-verification-button").addEventListener("click", async () => {
   if (!pendingVerificationEmail) {
     showStatus("Register first to request a verification email.", true);
     return;
   }
 
-  resendVerificationButton.disabled = true;
-  resendVerificationButton.textContent = "Sending…";
-
   const { error } = await supabaseClient.auth.resend({
     type: "signup",
     email: pendingVerificationEmail,
-    options: { emailRedirectTo: getRedirectUrl() }
+    options: { emailRedirectTo: redirectUrl() }
   });
 
-  resendVerificationButton.disabled = false;
-  resendVerificationButton.textContent = "Resend verification email";
-
   if (error) {
-    console.error(error);
     showStatus("Could not resend the email. Try again shortly.", true);
   } else {
-    verificationMessage.textContent =
-      `A new verification link was sent to ${pendingVerificationEmail}. Check your inbox and spam folder.`;
+    showStatus("A new verification email has been sent.");
   }
 });
 
@@ -644,11 +1154,7 @@ document.getElementById("login-form").addEventListener("submit", async (event) =
     });
 
     if (error) {
-      console.error(error);
-      showStatus(
-        "Could not log in. Check your email and password, and verify your email if required.",
-        true
-      );
+      showStatus("Could not log in. Check your email and password, and verify your email if required.", true);
       return;
     }
 
@@ -667,340 +1173,54 @@ document.getElementById("forgot-password-button").addEventListener("click", asyn
   const email = document.getElementById("login-email").value.trim();
 
   if (!email) {
-    showStatus("Enter your email first, then choose Forgot password.", true);
+    showStatus("Enter your email first.", true);
     return;
   }
 
   const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-    redirectTo: getRedirectUrl()
+    redirectTo: redirectUrl()
   });
 
   if (error) {
-    console.error(error);
-    showStatus("Could not send a password reset email.", true);
+    showStatus("Could not send the password reset email.", true);
   } else {
-    showStatus("If that email has an account, a password reset email has been sent.");
+    showStatus("If the account exists, a password reset email has been sent.");
   }
 });
 
-document.getElementById("post-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  clearStatus();
+/* ---------- Navigation and startup ---------- */
 
-  if (!currentUser) {
-    showStatus("Please log in before posting.", true);
-    return;
-  }
+document.getElementById("show-login-button").addEventListener("click", () => showAuthForm("login"));
+document.getElementById("show-register-button").addEventListener("click", () => showAuthForm("register"));
+document.getElementById("login-to-register-link").addEventListener("click", () => showAuthForm("register"));
+document.getElementById("register-to-login-link").addEventListener("click", () => showAuthForm("login"));
 
-  const content = document.getElementById("post-content").value.trim();
-
-  if (!content) {
-    showStatus("Please write something for your post.", true);
-    return;
-  }
-
-  if (content.length > 2000) {
-    showStatus("Posts can be up to 2,000 characters.", true);
-    return;
-  }
-
-  const button = document.getElementById("publish-button");
-  button.disabled = true;
-  button.textContent = "Publishing…";
-
-  let uploadedPath = null;
-
-  try {
-    uploadedPath = await uploadSelectedImage();
-
-    const { error } = await supabaseClient
-      .from("posts")
-      .insert({
-        author_id: currentUser.id,
-        content,
-        image_path: uploadedPath
-      });
-
-    if (error) throw error;
-
-    document.getElementById("post-content").value = "";
-    clearImageSelection();
-    showStatus("Your post was published.");
-    await loadPosts();
-  } catch (error) {
-    console.error("Could not publish post:", error);
-
-    if (uploadedPath) {
-      await supabaseClient.storage
-        .from(IMAGE_BUCKET)
-        .remove([uploadedPath]);
-    }
-
-    showStatus(
-      "Could not publish your post. Check the database/storage setup and try again.",
-      true
-    );
-  } finally {
-    button.disabled = false;
-    button.textContent = "Publish post";
-  }
-});
-
-async function toggleReaction(postId, emoji, clickedButton) {
-  const wasSelected = clickedButton.classList.contains("selected");
-  const buttons = [];
-
-  // Find the matching reaction in the feed and My Posts views.
-  document
-    .querySelectorAll(`.post-card[data-post-id="${postId}"] .reaction-button`)
-    .forEach((button) => {
-      if (button.dataset.emoji === emoji) {
-        buttons.push(button);
-      }
-    });
-
-  const oldStates = buttons.map((button) => ({
-    button,
-    count: Number(button.dataset.count || 0),
-    selected: button.classList.contains("selected")
-  }));
-
-  // Update the displayed reaction immediately, without rebuilding the feed.
-  buttons.forEach((button) => {
-    const oldCount = Number(button.dataset.count || 0);
-    const newCount = Math.max(0, oldCount + (wasSelected ? -1 : 1));
-
-    button.dataset.count = String(newCount);
-    button.classList.toggle("selected", !wasSelected);
-    button.textContent = `${emoji} ${newCount || ""}`.trim();
-  });
-
-  buttons.forEach((button) => {
-    button.disabled = true;
-  });
-
-  let result;
-
-  if (wasSelected) {
-    result = await supabaseClient
-      .from("post_reactions")
-      .delete()
-      .eq("post_id", postId)
-      .eq("user_id", currentUser.id)
-      .eq("emoji", emoji);
-  } else {
-    result = await supabaseClient
-      .from("post_reactions")
-      .insert({
-        post_id: postId,
-        user_id: currentUser.id,
-        emoji
-      });
-  }
-
-  if (result.error) {
-    console.error("Reaction error:", result.error);
-
-    // Restore the previous display if Supabase couldn't save the reaction.
-    oldStates.forEach(({ button, count, selected }) => {
-      button.dataset.count = String(count);
-      button.classList.toggle("selected", selected);
-      button.textContent = `${emoji} ${count || ""}`.trim();
-    });
-
-    showStatus("Could not save that reaction. Please try again.", true);
-  }
-
-  buttons.forEach((button) => {
-    button.disabled = false;
-  });
-}
-
-async function addComment(postId, rawContent) {
-  const content = rawContent.trim();
-
-  if (!content) {
-    showStatus("Write a comment first.", true);
-    return;
-  }
-
-  if (content.length > 1000) {
-    showStatus("Comments can be up to 1,000 characters.", true);
-    return;
-  }
-
-  const { data: newComment, error } = await supabaseClient
-    .from("comments")
-    .insert({
-      post_id: postId,
-      author_id: currentUser.id,
-      content
-    })
-    .select("id, post_id, author_id, content, created_at")
-    .single();
-
-  if (error) {
-    console.error("Comment error:", error);
-    showStatus("Could not add your comment. Please try again.", true);
-    return;
-  }
-
-  // Update the comment section in both views without reloading the posts.
-  const matchingCards = document.querySelectorAll(
-    `.post-card[data-post-id="${postId}"]`
-  );
-
-  matchingCards.forEach((card) => {
-    const commentList = card.querySelector(".comment-list");
-    if (!commentList) return;
-
-    // Remove the empty-state message when the first comment is added.
-    const emptyMessage = Array.from(commentList.children).find(
-      (child) => child.textContent.trim() === "No comments yet."
-    );
-
-    if (emptyMessage) {
-      emptyMessage.remove();
-    }
-
-    const comment = document.createElement("article");
-    comment.className = "comment";
-
-    const meta = document.createElement("div");
-    meta.className = "comment-meta";
-
-    const author = document.createElement("strong");
-    author.className = "comment-author";
-    author.textContent =
-      document.getElementById("current-username").textContent || "Member";
-
-    const deleteButton = document.createElement("button");
-    deleteButton.className = "comment-delete";
-    deleteButton.type = "button";
-    deleteButton.textContent = "Delete";
-    deleteButton.addEventListener("click", () => deleteComment(newComment.id));
-
-    meta.append(author, deleteButton);
-
-    const commentText = document.createElement("p");
-    commentText.className = "comment-text";
-    commentText.textContent = newComment.content;
-
-    const time = document.createElement("small");
-    time.className = "post-date";
-    time.textContent = formatDate(newComment.created_at);
-
-    comment.append(meta, commentText, time);
-    commentList.appendChild(comment);
-  });
-
-  // Clear the submitted comment box(es) for that post.
-  matchingCards.forEach((card) => {
-    const input = card.querySelector(".comment-form input");
-    if (input) input.value = "";
-  });
-
-  clearStatus();
-}
-
-async function deleteComment(commentId) {
-  if (!window.confirm("Delete your comment?")) return;
-
-  const { error } = await supabaseClient
-    .from("comments")
-    .delete()
-    .eq("id", commentId)
-    .eq("author_id", currentUser.id);
-
-  if (error) {
-    console.error("Delete comment error:", error);
-    showStatus("Could not delete your comment.", true);
-    return;
-  }
-
-  await loadPosts();
-}
-
-async function deletePost(post) {
-  if (!window.confirm("Delete this post? Its comments and reactions will also be removed.")) {
-    return;
-  }
-
-  const { error } = await supabaseClient
-    .from("posts")
-    .delete()
-    .eq("id", post.id)
-    .eq("author_id", currentUser.id);
-
-  if (error) {
-    console.error("Delete post error:", error);
-    showStatus("Could not delete that post.", true);
-    return;
-  }
-
-  if (post.image_path) {
-    const { error: imageError } = await supabaseClient.storage
-      .from(IMAGE_BUCKET)
-      .remove([post.image_path]);
-
-    if (imageError) console.error("Could not remove attached image:", imageError);
-  }
-
-  showStatus("Post deleted.");
-  await loadPosts();
-}
-
-/* Sign-in and sign-up form switching */
-function showAuthForm(formName) {
-  const login = formName === "login";
-
-  document.getElementById("login-form").classList.toggle("hidden", !login);
-  document.getElementById("register-form").classList.toggle("hidden", login);
-  verificationPanel.classList.add("hidden");
-
-  document.getElementById("auth-heading").textContent =
-    login ? "Welcome back" : "Create your account";
-
-  document.getElementById("show-login-button").classList.toggle("active", login);
-  document.getElementById("show-register-button").classList.toggle("active", !login);
-
-  clearStatus();
-}
-
-document.getElementById("show-login-button").addEventListener("click", () => {
-  showAuthForm("login");
-});
-
-document.getElementById("show-register-button").addEventListener("click", () => {
-  showAuthForm("register");
-});
-
-document.getElementById("login-to-register-link").addEventListener("click", () => {
-  showAuthForm("register");
-});
-
-document.getElementById("register-to-login-link").addEventListener("click", () => {
-  showAuthForm("login");
-});
-
-document.getElementById("remove-image-button").addEventListener("click", () => {
-  clearImageSelection();
+document.querySelectorAll(".bottom-nav-button").forEach((button) => {
+  button.addEventListener("click", () => setView(button.dataset.view));
 });
 
 document.getElementById("refresh-posts-button").addEventListener("click", loadPosts);
+document.getElementById("refresh-my-posts-button").addEventListener("click", loadPosts);
+document.getElementById("refresh-notifications-button").addEventListener("click", loadNotifications);
+
+document.getElementById("back-to-profiles-button").addEventListener("click", () => {
+  setView("profile");
+});
 
 document.getElementById("logout-button").addEventListener("click", async () => {
   const { error } = await supabaseClient.auth.signOut();
 
   if (error) {
-    console.error(error);
     showStatus("Could not log out. Please try again.", true);
     return;
   }
 
   showSignedOutApp();
-  clearStatus();
 });
+
+function redirectUrl() {
+  return window.location.origin + window.location.pathname;
+}
 
 async function initialize() {
   if (
@@ -1033,34 +1253,5 @@ async function initialize() {
     }
   });
 }
-
-function showMemberView(viewName) {
-  document.querySelectorAll(".member-tab-button").forEach((button) => {
-    button.classList.toggle(
-      "active",
-      button.dataset.memberView === viewName
-    );
-  });
-
-  document.getElementById("feed-view").classList.toggle(
-    "hidden",
-    viewName !== "feed"
-  );
-
-  document.getElementById("my-posts-view").classList.toggle(
-    "hidden",
-    viewName !== "my-posts"
-  );
-}
-
-document.querySelectorAll(".member-tab-button").forEach((button) => {
-  button.addEventListener("click", () => {
-    showMemberView(button.dataset.memberView);
-  });
-});
-
-document
-  .getElementById("refresh-my-posts-button")
-  .addEventListener("click", loadPosts);
 
 initialize();
